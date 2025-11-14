@@ -1,35 +1,47 @@
-import { LoginForm } from '@/components/auth/LoginForm'
+'use client'; // <-- This line fixes the error
+
+import { LoginForm } from '@/components/auth/LoginForm' // Restored alias path
 import Link from 'next/link'
 
 export default function LoginPage() {
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
-      <div className="w-full max-w-md space-y-6">
-        <div className="text-center">
-          <div className="flex justify-center mb-4">
-            <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center">
-              <span className="text-white text-2xl font-bold">UP</span>
-            </div>
-          </div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">
-            Uttar Pradesh
-          </h1>
-          <p className="text-gray-600">
-            Electronic Human Resource Management System
-          </p>
-        </div>
+return (
+// Refined: Changed gradient from blue to purple theme
+<div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-br from-purple-50 to-purple-100 p-4">
+<div className="w-full max-w-md space-y-6">
+<div className="text-center">
+<div className="mb-4 flex justify-center">
+{/* Refined: Replaced text logo with official UP Seal logo */}
+<Link href="/" className="mb-4">
+<img
+src="https://upload.wikimedia.org/wikipedia/commons/thumb/f/fa/Seal_of_Uttar_Pradesh.svg/768px-Seal_of_Uttar_Pradesh.svg.png"
+alt="UP Government Logo"
+className="h-20 w-auto"
+onError={(e) => { (e.currentTarget as HTMLImageElement).src = 'https://placehold.co/80x80/ccc/333?text=UP'; }}
+/>
+</Link>
+</div>
+{/* Refined: Matched text and colors to landing page */}
+<h1 className="text-3xl font-bold text-purple-700">
+MANAV SAMPADA
+</h1>
+<h2 className="text-xl font-semibold text-gray-700">
+UTTAR PRADESH
+</h2>
+<p className="mt-2 text-sm text-gray-500">Please login to access your dashboard.</p>
+</div>
 
-        <LoginForm />
+<LoginForm />
 
-        <div className="text-center">
-          <p className="text-sm text-gray-600">
-            Don't have an account?{' '}
-            <Link href="/signup" className="text-blue-600 hover:underline font-medium">
-              Sign up here
-            </Link>
-          </p>
-        </div>
-      </div>
-    </div>
-  )
+<div className="text-center">
+{/* Refined: Replaced 'Sign up' with 'Go back to Home' to match landing page */}
+<p className="text-sm text-gray-60hidden0">
+<Link href="/" className="text-purple-600 hover:text-purple-800 hover:underline font-medium">
+← Go back to Home
+</Link>
+</p>
+</div>
+</div>
+</div>
+)
 }
+

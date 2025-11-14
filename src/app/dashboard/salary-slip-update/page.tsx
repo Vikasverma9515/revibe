@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -9,6 +9,8 @@ import { Label } from '@/components/ui/label'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
+import { supabase } from '@/lib/supabase/client'
+import { useUser } from '@/contexts/UserContext'
 import {
   Edit,
   Save,
@@ -16,102 +18,266 @@ import {
   CheckCircle,
   AlertTriangle,
   FileText,
-  Calculator
+  Calculator,
+  Loader2
 } from 'lucide-react'
 
-// Mock data for pending salary slips
-const mockPendingSlips = [
-  {
-    id: 'SLIP-2024-001',
-    employeeId: 'UP/2024/001',
-    employeeName: 'John Doe',
-    department: 'FINANCE',
-    month: 'January 2024',
-    status: 'draft',
-    basicSalary: 45000,
-    hra: 9000,
-    conveyance: 1920,
-    lta: 1500,
-    medical: 1250,
-    otherAllowances: 1330,
-    providentFund: 5400,
-    professionalTax: 235,
-    incomeTax: 4500,
-    otherDeductions: 500,
-    grossSalary: 51000,
-    totalDeductions: 10635,
-    netSalary: 40365,
-    notes: ''
-  },
-  {
-    id: 'SLIP-2024-002',
-    employeeId: 'UP/2024/002',
-    employeeName: 'Jane Smith',
-    department: 'EDUCATION',
-    month: 'January 2024',
-    status: 'pending_approval',
-    basicSalary: 35000,
-    hra: 7000,
-    conveyance: 1920,
-    lta: 1200,
-    medical: 1250,
-    otherAllowances: 1130,
-    providentFund: 4200,
-    professionalTax: 235,
-    incomeTax: 3500,
-    otherDeductions: 300,
-    grossSalary: 40500,
-    totalDeductions: 8235,
-    netSalary: 32265,
-    notes: 'Medical allowance adjustment required'
+interface SalarySlip {
+  id: string
+  employee_id: string
+  month: number
+  year: number
+  basic_salary: number
+  hra: number | null
+  conveyance: number | null
+  lta: number | null
+  medical: number | null
+  other_allowances: number | null
+  gross_salary: number
+  provident_fund: number | null
+  professional_tax: number | null
+  income_tax: number | null
+  other_deductions: number | null
+  total_deductions: number | null
+  net_salary: number
+  status: string
+  profiles?: {
+    full_name: string
+    employee_id: string
+    department: string
   }
-]
+  notes?: string
+}
 
 export default function SalarySlipUpdatePage() {
-  const [editingSlip, setEditingSlip] = useState(null)
-  const [slipData, setSlipData] = useState(mockPendingSlips)
+  const { profile } = useUser()
+  const [editingSlip, setEditingSlip] = useState<string | null>(null)
+  const [slipData, setSlipData] = useState<SalarySlip[]>([])
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
 
-  const handleEdit = (slip) => {
+  useEffect(() => {
+    if (profile && (profile.role === 'hr' || profile.role === 'admin')) {
+      fetchSalarySlips()
+    } else {
+      setLoading(false)
+    }
+  }, [profile])
+
+  // Only allow HR and Admin roles
+  if (profile && profile.role !== 'hr' && profile.role !== 'admin') {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">Access Denied</h1>
+          <p className="text-gray-600">You don&apos;t have permission to access salary slip updates.</p>
+        </div>
+      </div>
+    )
+  }
+
+  const fetchSalarySlips = async () => {
+    try {
+      setLoading(true)
+      const { data, error } = await supabase
+        .from('salary_slips')
+        .select(`
+          *,
+          profiles!inner(full_name, employee_id, department)
+        `)
+        .in('status', ['draft', 'pending_approval'])
+        .order('created_at', { ascending: false })
+
+      if (error) throw error
+      setSlipData(data || [])
+    } catch (error) {
+      console.error('Error fetching salary slips:', error)
+      alert('Failed to load salary slips')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleEdit = (slip: SalarySlip) => {
     setEditingSlip(slip.id)
   }
 
-  const handleSave = (slipId) => {
-    // Mock save functionality
-    setSlipData(prev => prev.map(slip =>
-      slip.id === slipId ? { ...slip, status: 'pending_approval' } : slip
-    ))
-    setEditingSlip(null)
-    alert('Salary slip updated and sent for approval')
+  const handleSave = async (slipId: string) => {
+    if (!profile) return
+
+    try {
+      setSaving(true)
+      const slip = slipData.find(s => s.id === slipId)
+      if (!slip) return
+
+      // Calculate new totals
+      const basic = slip.basic_salary || 0
+      const hra = slip.hra || 0
+      const conveyance = slip.conveyance || 0
+      const lta = slip.lta || 0
+      const medical = slip.medical || 0
+      const otherAllow = slip.other_allowances || 0
+
+      const gross = basic + hra + conveyance + lta + medical + otherAllow
+      const deductions = (slip.provident_fund || 0) + (slip.professional_tax || 0) + (slip.income_tax || 0) + (slip.other_deductions || 0)
+      const net = gross - deductions
+
+      // Get old values for audit logging
+      const oldSlip = { ...slip }
+
+      // Update salary slip
+      const { error: updateError } = await supabase
+        .from('salary_slips')
+        .update({
+          basic_salary: basic,
+          hra: hra,
+          conveyance: conveyance,
+          lta: lta,
+          medical: medical,
+          other_allowances: otherAllow,
+          gross_salary: gross,
+          provident_fund: slip.provident_fund,
+          professional_tax: slip.professional_tax,
+          income_tax: slip.income_tax,
+          other_deductions: slip.other_deductions,
+          total_deductions: deductions,
+          net_salary: net,
+          status: 'pending_approval',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', slipId)
+
+      if (updateError) throw updateError
+
+      // Log the change in audit logs
+      await supabase
+        .from('audit_logs')
+        .insert({
+          user_id: profile.id,
+          action: 'UPDATE_SALARY_SLIP',
+          table_name: 'salary_slips',
+          record_id: slipId,
+          old_values: oldSlip,
+          new_values: {
+            ...slip,
+            gross_salary: gross,
+            total_deductions: deductions,
+            net_salary: net,
+            status: 'pending_approval'
+          }
+        })
+
+      // Update local state
+      setSlipData(prev => prev.map(s =>
+        s.id === slipId ? {
+          ...s,
+          gross_salary: gross,
+          total_deductions: deductions,
+          net_salary: net,
+          status: 'pending_approval'
+        } : s
+      ))
+
+      setEditingSlip(null)
+      alert('Salary slip updated and sent for approval')
+    } catch (error) {
+      console.error('Error updating salary slip:', error)
+      alert('Failed to update salary slip')
+    } finally {
+      setSaving(false)
+    }
   }
 
   const handleCancel = () => {
     setEditingSlip(null)
   }
 
-  const handleApprove = (slipId) => {
-    setSlipData(prev => prev.map(slip =>
-      slip.id === slipId ? { ...slip, status: 'approved' } : slip
-    ))
-    alert('Salary slip approved')
+  const handleApprove = async (slipId: string) => {
+    if (!profile) return
+
+    try {
+      setSaving(true)
+
+      const { error } = await supabase
+        .from('salary_slips')
+        .update({
+          status: 'approved',
+          approved_by: profile.id,
+          approved_at: new Date().toISOString()
+        })
+        .eq('id', slipId)
+
+      if (error) throw error
+
+      // Log approval
+      await supabase
+        .from('audit_logs')
+        .insert({
+          user_id: profile.id,
+          action: 'APPROVE_SALARY_SLIP',
+          table_name: 'salary_slips',
+          record_id: slipId
+        })
+
+      setSlipData(prev => prev.map(slip =>
+        slip.id === slipId ? { ...slip, status: 'approved' } : slip
+      ))
+      alert('Salary slip approved')
+    } catch (error) {
+      console.error('Error approving salary slip:', error)
+      alert('Failed to approve salary slip')
+    } finally {
+      setSaving(false)
+    }
   }
 
-  const handleReject = (slipId) => {
-    setSlipData(prev => prev.map(slip =>
-      slip.id === slipId ? { ...slip, status: 'rejected' } : slip
-    ))
-    alert('Salary slip rejected')
+  const handleReject = async (slipId: string) => {
+    if (!profile) return
+
+    try {
+      setSaving(true)
+
+      const { error } = await supabase
+        .from('salary_slips')
+        .update({
+          status: 'draft' // Reset to draft so it can be edited again
+        })
+        .eq('id', slipId)
+
+      if (error) throw error
+
+      // Log rejection
+      await supabase
+        .from('audit_logs')
+        .insert({
+          user_id: profile.id,
+          action: 'REJECT_SALARY_SLIP',
+          table_name: 'salary_slips',
+          record_id: slipId
+        })
+
+      setSlipData(prev => prev.map(slip =>
+        slip.id === slipId ? { ...slip, status: 'draft' } : slip
+      ))
+      alert('Salary slip sent back for revision')
+    } catch (error) {
+      console.error('Error rejecting salary slip:', error)
+      alert('Failed to reject salary slip')
+    } finally {
+      setSaving(false)
+    }
   }
 
-  const updateSlipField = (slipId, field, value) => {
+  const updateSlipField = (slipId: string, field: string, value: string | number) => {
     setSlipData(prev => prev.map(slip =>
-      slip.id === slipId ? { ...slip, [field]: parseFloat(value) || value } : slip
+      slip.id === slipId ? { ...slip, [field]: typeof value === 'string' ? (parseFloat(value as string) || 0) : value } : slip
     ))
   }
 
-  const calculateTotals = (slip) => {
-    const gross = slip.basicSalary + slip.hra + slip.conveyance + slip.lta + slip.medical + slip.otherAllowances
-    const deductions = slip.providentFund + slip.professionalTax + slip.incomeTax + slip.otherDeductions
-    const net = gross - deductions
+  const calculateTotals = (slip: SalarySlip) => {
+    const gross = slip.gross_salary || 0
+    const deductions = slip.total_deductions || 0
+    const net = slip.net_salary || 0
     return { gross, deductions, net }
   }
 
@@ -174,7 +340,7 @@ export default function SalarySlipUpdatePage() {
                 <div>
                   <p className="text-sm font-medium text-gray-600">Total Amount</p>
                   <p className="text-2xl font-bold text-gray-900">
-                    ₹{slipData.reduce((sum, slip) => sum + calculateTotals(slip).net, 0).toLocaleString()}
+                    ₹{slipData.reduce((sum, slip) => sum + (slip.net_salary || 0), 0).toLocaleString()}
                   </p>
                 </div>
                 <Calculator className="w-8 h-8 text-blue-600" />
@@ -205,66 +371,84 @@ export default function SalarySlipUpdatePage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {slipData.map((slip) => {
-                  const totals = calculateTotals(slip)
-                  return (
-                    <TableRow key={slip.id}>
-                      <TableCell className="font-medium">{slip.id}</TableCell>
-                      <TableCell>
-                        <div>
-                          <p className="font-medium">{slip.employeeName}</p>
-                          <p className="text-sm text-gray-500">{slip.employeeId}</p>
-                        </div>
-                      </TableCell>
-                      <TableCell>{slip.department}</TableCell>
-                      <TableCell>{slip.month}</TableCell>
-                      <TableCell>₹{totals.gross.toLocaleString()}</TableCell>
-                      <TableCell>₹{totals.deductions.toLocaleString()}</TableCell>
-                      <TableCell className="font-semibold">₹{totals.net.toLocaleString()}</TableCell>
-                      <TableCell>
-                        <Badge variant={
-                          slip.status === 'approved' ? 'default' :
-                          slip.status === 'pending_approval' ? 'secondary' :
-                          slip.status === 'rejected' ? 'destructive' : 'outline'
-                        }>
-                          {slip.status.replace('_', ' ')}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleEdit(slip)}
-                            disabled={editingSlip === slip.id}
-                          >
-                            <Edit className="w-4 h-4" />
-                          </Button>
-                          {slip.status === 'pending_approval' && (
-                            <>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleApprove(slip.id)}
-                                className="text-green-600"
-                              >
-                                <CheckCircle className="w-4 h-4" />
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleReject(slip.id)}
-                                className="text-red-600"
-                              >
-                                <X className="w-4 h-4" />
-                              </Button>
-                            </>
-                          )}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  )
-                })}
+                {loading ? (
+                  <TableRow>
+                    <TableCell colSpan={9} className="text-center py-8">
+                      <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
+                      Loading salary slips...
+                    </TableCell>
+                  </TableRow>
+                ) : slipData.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={9} className="text-center py-8 text-gray-500">
+                      No salary slips found
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  slipData.map((slip) => {
+                    const totals = calculateTotals(slip)
+                    const monthName = new Date(slip.year, slip.month - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+                    return (
+                      <TableRow key={slip.id}>
+                        <TableCell className="font-medium">{slip.id.slice(0, 8)}...</TableCell>
+                        <TableCell>
+                          <div>
+                            <p className="font-medium">{slip.profiles?.full_name || 'N/A'}</p>
+                            <p className="text-sm text-gray-500">{slip.profiles?.employee_id || 'N/A'}</p>
+                          </div>
+                        </TableCell>
+                        <TableCell>{slip.profiles?.department || 'N/A'}</TableCell>
+                        <TableCell>{monthName}</TableCell>
+                        <TableCell>₹{totals.gross.toLocaleString()}</TableCell>
+                        <TableCell>₹{totals.deductions.toLocaleString()}</TableCell>
+                        <TableCell className="font-semibold">₹{totals.net.toLocaleString()}</TableCell>
+                        <TableCell>
+                          <Badge variant={
+                            slip.status === 'approved' ? 'default' :
+                            slip.status === 'pending_approval' ? 'secondary' :
+                            slip.status === 'draft' ? 'outline' : 'destructive'
+                          }>
+                            {slip.status.replace('_', ' ')}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleEdit(slip)}
+                              disabled={editingSlip === slip.id || saving}
+                            >
+                              <Edit className="w-4 h-4" />
+                            </Button>
+                            {slip.status === 'pending_approval' && (
+                              <>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleApprove(slip.id)}
+                                  className="text-green-600"
+                                  disabled={saving}
+                                >
+                                  <CheckCircle className="w-4 h-4" />
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleReject(slip.id)}
+                                  className="text-red-600"
+                                  disabled={saving}
+                                >
+                                  <X className="w-4 h-4" />
+                                </Button>
+                              </>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })
+                )}
               </TableBody>
             </Table>
           </CardContent>
@@ -276,7 +460,7 @@ export default function SalarySlipUpdatePage() {
             <CardHeader>
               <div className="flex justify-between items-center">
                 <CardTitle>Edit Salary Slip</CardTitle>
-                <Button variant="outline" onClick={handleCancel}>
+                <Button variant="outline" onClick={handleCancel} disabled={saving}>
                   <X className="w-4 h-4" />
                 </Button>
               </div>
@@ -291,15 +475,15 @@ export default function SalarySlipUpdatePage() {
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <div>
                         <Label>Employee Name</Label>
-                        <Input value={slip.employeeName} disabled />
+                        <Input value={slip.profiles?.full_name || 'N/A'} disabled />
                       </div>
                       <div>
                         <Label>Employee ID</Label>
-                        <Input value={slip.employeeId} disabled />
+                        <Input value={slip.profiles?.employee_id || 'N/A'} disabled />
                       </div>
                       <div>
                         <Label>Department</Label>
-                        <Input value={slip.department} disabled />
+                        <Input value={slip.profiles?.department || 'N/A'} disabled />
                       </div>
                     </div>
 
@@ -308,12 +492,13 @@ export default function SalarySlipUpdatePage() {
                       <h3 className="text-lg font-semibold mb-4">Earnings</h3>
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div>
-                          <Label htmlFor="basicSalary">Basic Salary</Label>
+                          <Label htmlFor="basic_salary">Basic Salary</Label>
                           <Input
-                            id="basicSalary"
+                            id="basic_salary"
                             type="number"
-                            value={slip.basicSalary}
-                            onChange={(e) => updateSlipField(slip.id, 'basicSalary', e.target.value)}
+                            value={slip.basic_salary || ''}
+                            onChange={(e) => updateSlipField(slip.id, 'basic_salary', e.target.value)}
+                            disabled={saving}
                           />
                         </div>
                         <div>
@@ -321,8 +506,9 @@ export default function SalarySlipUpdatePage() {
                           <Input
                             id="hra"
                             type="number"
-                            value={slip.hra}
+                            value={slip.hra || ''}
                             onChange={(e) => updateSlipField(slip.id, 'hra', e.target.value)}
+                            disabled={saving}
                           />
                         </div>
                         <div>
@@ -330,8 +516,9 @@ export default function SalarySlipUpdatePage() {
                           <Input
                             id="conveyance"
                             type="number"
-                            value={slip.conveyance}
+                            value={slip.conveyance || ''}
                             onChange={(e) => updateSlipField(slip.id, 'conveyance', e.target.value)}
+                            disabled={saving}
                           />
                         </div>
                         <div>
@@ -339,8 +526,9 @@ export default function SalarySlipUpdatePage() {
                           <Input
                             id="lta"
                             type="number"
-                            value={slip.lta}
+                            value={slip.lta || ''}
                             onChange={(e) => updateSlipField(slip.id, 'lta', e.target.value)}
+                            disabled={saving}
                           />
                         </div>
                         <div>
@@ -348,17 +536,19 @@ export default function SalarySlipUpdatePage() {
                           <Input
                             id="medical"
                             type="number"
-                            value={slip.medical}
+                            value={slip.medical || ''}
                             onChange={(e) => updateSlipField(slip.id, 'medical', e.target.value)}
+                            disabled={saving}
                           />
                         </div>
                         <div>
-                          <Label htmlFor="otherAllowances">Other Allowances</Label>
+                          <Label htmlFor="other_allowances">Other Allowances</Label>
                           <Input
-                            id="otherAllowances"
+                            id="other_allowances"
                             type="number"
-                            value={slip.otherAllowances}
-                            onChange={(e) => updateSlipField(slip.id, 'otherAllowances', e.target.value)}
+                            value={slip.other_allowances || ''}
+                            onChange={(e) => updateSlipField(slip.id, 'other_allowances', e.target.value)}
+                            disabled={saving}
                           />
                         </div>
                       </div>
@@ -369,39 +559,43 @@ export default function SalarySlipUpdatePage() {
                       <h3 className="text-lg font-semibold mb-4">Deductions</h3>
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div>
-                          <Label htmlFor="providentFund">Provident Fund</Label>
+                          <Label htmlFor="provident_fund">Provident Fund</Label>
                           <Input
-                            id="providentFund"
+                            id="provident_fund"
                             type="number"
-                            value={slip.providentFund}
-                            onChange={(e) => updateSlipField(slip.id, 'providentFund', e.target.value)}
+                            value={slip.provident_fund || ''}
+                            onChange={(e) => updateSlipField(slip.id, 'provident_fund', e.target.value)}
+                            disabled={saving}
                           />
                         </div>
                         <div>
-                          <Label htmlFor="professionalTax">Professional Tax</Label>
+                          <Label htmlFor="professional_tax">Professional Tax</Label>
                           <Input
-                            id="professionalTax"
+                            id="professional_tax"
                             type="number"
-                            value={slip.professionalTax}
-                            onChange={(e) => updateSlipField(slip.id, 'professionalTax', e.target.value)}
+                            value={slip.professional_tax || ''}
+                            onChange={(e) => updateSlipField(slip.id, 'professional_tax', e.target.value)}
+                            disabled={saving}
                           />
                         </div>
                         <div>
-                          <Label htmlFor="incomeTax">Income Tax</Label>
+                          <Label htmlFor="income_tax">Income Tax</Label>
                           <Input
-                            id="incomeTax"
+                            id="income_tax"
                             type="number"
-                            value={slip.incomeTax}
-                            onChange={(e) => updateSlipField(slip.id, 'incomeTax', e.target.value)}
+                            value={slip.income_tax || ''}
+                            onChange={(e) => updateSlipField(slip.id, 'income_tax', e.target.value)}
+                            disabled={saving}
                           />
                         </div>
                         <div>
-                          <Label htmlFor="otherDeductions">Other Deductions</Label>
+                          <Label htmlFor="other_deductions">Other Deductions</Label>
                           <Input
-                            id="otherDeductions"
+                            id="other_deductions"
                             type="number"
-                            value={slip.otherDeductions}
-                            onChange={(e) => updateSlipField(slip.id, 'otherDeductions', e.target.value)}
+                            value={slip.other_deductions || ''}
+                            onChange={(e) => updateSlipField(slip.id, 'other_deductions', e.target.value)}
+                            disabled={saving}
                           />
                         </div>
                       </div>
@@ -413,8 +607,9 @@ export default function SalarySlipUpdatePage() {
                       <Textarea
                         id="notes"
                         placeholder="Add any notes or comments about this salary slip..."
-                        value={slip.notes}
+                        value={slip.notes || ''}
                         onChange={(e) => updateSlipField(slip.id, 'notes', e.target.value)}
+                        disabled={saving}
                       />
                     </div>
 
@@ -438,11 +633,11 @@ export default function SalarySlipUpdatePage() {
 
                     {/* Actions */}
                     <div className="flex gap-4">
-                      <Button onClick={() => handleSave(slip.id)}>
-                        <Save className="w-4 h-4 mr-2" />
-                        Save Changes
+                      <Button onClick={() => handleSave(slip.id)} disabled={saving}>
+                        {saving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
+                        {saving ? 'Saving...' : 'Save Changes'}
                       </Button>
-                      <Button variant="outline" onClick={handleCancel}>
+                      <Button variant="outline" onClick={handleCancel} disabled={saving}>
                         Cancel
                       </Button>
                     </div>

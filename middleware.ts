@@ -46,6 +46,38 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
+  // Check role-based access for protected routes
+  if (user && request.nextUrl.pathname.startsWith('/dashboard')) {
+    // Fetch user profile to check role
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single()
+
+    if (profile) {
+      const userRole = profile.role
+
+      // Define role-based route access
+      const adminRoutes = ['/dashboard/user-management', '/dashboard/settings', '/dashboard/audit']
+      const hrRoutes = ['/dashboard/payroll', '/dashboard/job-profile', '/dashboard/promotion', '/dashboard/salary-slip-update']
+
+      // Check if user is trying to access admin-only routes
+      if (adminRoutes.some(route => request.nextUrl.pathname.startsWith(route)) && userRole !== 'admin') {
+        const url = request.nextUrl.clone()
+        url.pathname = '/dashboard'
+        return NextResponse.redirect(url)
+      }
+
+      // Check if user is trying to access HR-only routes
+      if (hrRoutes.some(route => request.nextUrl.pathname.startsWith(route)) && !['admin', 'hr'].includes(userRole)) {
+        const url = request.nextUrl.clone()
+        url.pathname = '/dashboard'
+        return NextResponse.redirect(url)
+      }
+    }
+  }
+
   // IMPORTANT: You *must* return the supabaseResponse object as it is. If you're
   // creating a new response object with NextResponse.next() make sure to:
   // 1. Pass the request in it, like so:

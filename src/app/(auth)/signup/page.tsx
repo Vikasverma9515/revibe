@@ -21,11 +21,16 @@ export default function SignupPage() {
 
         <SignupForm />
 
-        <div className="text-center">
+        <div className="text-center space-y-2">
           <p className="text-sm text-gray-600">
             Already have an account?{' '}
             <Link href="/login" className="text-blue-600 hover:underline font-medium">
               Sign in here
+            </Link>
+          </p>
+          <p className="text-sm text-gray-600">
+            <Link href="/" className="text-blue-600 hover:underline font-medium">
+              ← Back to Home
             </Link>
           </p>
         </div>

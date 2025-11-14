@@ -67,6 +67,7 @@ import type React from "react"
 import "./globals.css"
 import { Inter } from "next/font/google"
 import type { Metadata } from "next"
+import { UserProvider } from "@/contexts/UserContext"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -84,9 +85,11 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={inter.className}>
-        <div className="min-h-screen bg-gray-50 flex flex-col">
-          <main className="flex-grow">{children}</main>
-        </div>
+        <UserProvider>
+          <div className="min-h-screen bg-gray-50 flex flex-col">
+            <main className="flex-grow">{children}</main>
+          </div>
+        </UserProvider>
       </body>
     </html>
   )

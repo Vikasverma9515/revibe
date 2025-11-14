@@ -138,11 +138,12 @@ export function SignupForm() {
     }
 
     try {
-      const { error } = await supabase.auth.signUp({
+      const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
           data: {
+            full_name: userId, // Using userId as full_name for now, can be updated later
             user_id: userId,
             department,
           }
@@ -152,7 +153,8 @@ export function SignupForm() {
       if (error) {
         setError(error.message)
       } else {
-        router.push('/login?message=Check your email to confirm your account')
+        // Profile will be created automatically by the database trigger
+        router.push('/login')
       }
     } catch {
       setError('An unexpected error occurred')
