@@ -136,64 +136,11 @@ Signup
 );
 }
 
-// --- 3. Banner Carousel ---
-// Revolving array of banners about UP govt progress.
+// --- 3. Hero Banner ---
 function BannerCarousel() {
-const [currentSlide, setCurrentSlide] = useState(0);
-const slides = [
-{
-title: 'Groundbreaking Ceremony 4.0',
-description: 'Launching projects worth ₹10 lakh crore, fueling UP\'s journey to a $1 trillion economy.',
-image: 'https://placehold.co/1200x500/6b21a8/ffffff?text=UP+Progress+Banner+1',
-color: 'bg-purple-800/75'
-},
-{
-title: 'Noida International Airport',
-description: 'Connecting Uttar Pradesh to the world with a state-of-the-art aviation hub.',
-image: 'https://placehold.co/1200x500/7e22ce/ffffff?text=UP+Progress+Banner+2',
-color: 'bg-purple-700/75'
-},
-{
-title: 'UP Defence Industrial Corridor',
-description: 'Fostering self-reliance in aerospace and defence manufacturing.',
-image: 'https://placehold.co/1200x500/581c87/ffffff?text=UP+Progress+Banner+3',
-color: 'bg-purple-900/75'
-},
-];
-
-useEffect(() => {
-const timer = setTimeout(() => {
-setCurrentSlide((prev) => (prev === slides.length - 1 ? 0 : prev + 1));
-}, 5000); // Change slide every 5 seconds
-return () => clearTimeout(timer);
-}, [currentSlide, slides.length]);
-
 return (
 <section className="relative h-64 w-full overflow-hidden md:h-80 lg:h-96">
-{slides.map((slide, index) => (
-<div
-key={slide.title}
-className={`absolute inset-0 h-full w-full transition-opacity duration-1000 ${index === currentSlide ? 'opacity-100' : 'opacity-0'}`}
->
-<img src={slide.image} alt={slide.title} className="h-full w-full object-cover" />
-<div className={`absolute inset-0 ${slide.color} bg-opacity-70`}></div>
-<div className="absolute inset-0 flex items-center justify-center text-white">
-<div className="max-w-3xl text-center">
-<h2 className="text-2xl font-bold shadow-black drop-shadow-lg md:text-4xl lg:text-5xl">{slide.title}</h2>
-<p className="mt-4 text-sm shadow-black drop-shadow-lg md:text-lg">{slide.description}</p>
-</div>
-</div>
-</div>
-))}
-<div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 gap-2">
-{slides.map((_, index) => (
-<button
-key={index}
-onClick={() => setCurrentSlide(index)}
-className={`h-2 w-2 rounded-full ${index === currentSlide ? 'bg-white' : 'bg-white/50'} transition-all`}
-></button>
-))}
-</div>
+<img src="./hero.jpg" alt="Hero" className="h-full w-full object-cover" />
 </section>
 );
 }
