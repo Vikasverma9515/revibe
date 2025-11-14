@@ -1,3 +1,5 @@
+'use client'
+
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -151,20 +153,7 @@ export default function TransfersPage() {
     return null
   }
 
-  // Only HR and Admin can access this page
-  if (profile.role === 'employee') {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <Card className="w-full max-w-md">
-          <CardContent className="p-6 text-center">
-            <XCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">Access Denied</h3>
-            <p className="text-gray-600">You don't have permission to access the transfers module.</p>
-          </CardContent>
-        </Card>
-      </div>
-    )
-  }
+
 
   return (
     <div className="min-h-screen bg-gray-50">
